@@ -420,6 +420,10 @@
             }
         }
     </style>
+
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 </head>
 <body>
     <!-- Login Screen -->
@@ -572,6 +576,20 @@
     </div>
 
     <script>
+        // Configuración de Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDZxscXFCJ1IvRYBPhJvQPR58iTHuPgPDs",
+            authDomain: "consultorio-rosas.firebaseapp.com",
+            projectId: "consultorio-rosas",
+            storageBucket: "consultorio-rosas.firebasestorage.app",
+            messagingSenderId: "262219679372",
+            appId: "1:262219679372:web:61c5c15da49b1648c39da9"
+        };
+
+        // Inicializar Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
         // Credenciales de acceso (en producción, esto debería estar en un backend seguro)
         const ADMIN_USERNAME = 'citasconsultorio23@gmail.com';
         const ADMIN_PASSWORD = 'consultorio2026';
@@ -603,10 +621,20 @@
 
         // Cargar citas del localStorage
         function loadAppointments() {
-            const appointments = JSON.parse(localStorage.getItem('appointmentsData') || '[]');
-            allAppointments = appointments;
-            renderAppointments(appointments);
-            updateStatistics(appointments);
+            // Cargar desde Firestore
+            db.collection('appointments').orderBy('date', 'desc').get()
+                .then((querySnapshot) => {
+                    allAppointments = [];
+                    querySnapshot.forEach((doc) => {
+                        allAppointments.push({ id: doc.id, ...doc.data() });
+                    });
+                    renderAppointments(allAppointments);
+                    updateStatistics(allAppointments);
+                })
+                .catch((error) => {
+                    console.error("Error cargando citas:", error);
+                    alert("Error al cargar las citas. Verifica tu conexión.");
+                });
         }
 
         // Renderizar tabla de citas
@@ -767,8 +795,8 @@
         function saveAppointment(event) {
             event.preventDefault();
 
+            const appointmentId = document.getElementById('editingId').value;
             const appointment = {
-                id: document.getElementById('editingId').value || Date.now().toString(),
                 date: document.getElementById('appointmentDate').value,
                 time: document.getElementById('appointmentTime').value,
                 status: document.getElementById('appointmentStatus').value,
@@ -778,25 +806,35 @@
                     phone: document.getElementById('patientPhone').value,
                     email: document.getElementById('patientEmail').value,
                     reason: document.getElementById('consultReason').value
-                }
+                },
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
             };
-
-            let appointments = JSON.parse(localStorage.getItem('appointmentsData') || '[]');
 
             if (editingAppointment) {
                 // Editar existente
-                appointments = appointments.map(a => a.id === appointment.id ? appointment : a);
+                db.collection('appointments').doc(appointmentId).update(appointment)
+                    .then(() => {
+                        closeModal();
+                        loadAppointments();
+                        alert('Cita actualizada exitosamente');
+                    })
+                    .catch((error) => {
+                        console.error("Error actualizando cita:", error);
+                        alert("Error al actualizar la cita");
+                    });
             } else {
                 // Agregar nueva
-                appointments.push(appointment);
+                db.collection('appointments').add(appointment)
+                    .then(() => {
+                        closeModal();
+                        loadAppointments();
+                        alert('Cita agregada exitosamente');
+                    })
+                    .catch((error) => {
+                        console.error("Error agregando cita:", error);
+                        alert("Error al agregar la cita");
+                    });
             }
-
-            localStorage.setItem('appointmentsData', JSON.stringify(appointments));
-            
-            closeModal();
-            loadAppointments();
-            
-            alert(editingAppointment ? 'Cita actualizada exitosamente' : 'Cita agregada exitosamente');
         }
 
         function deleteAppointment(id) {
@@ -804,12 +842,15 @@
                 return;
             }
 
-            let appointments = JSON.parse(localStorage.getItem('appointmentsData') || '[]');
-            appointments = appointments.filter(a => a.id !== id);
-            localStorage.setItem('appointmentsData', JSON.stringify(appointments));
-            
-            loadAppointments();
-            alert('Cita eliminada exitosamente');
+            db.collection('appointments').doc(id).delete()
+                .then(() => {
+                    loadAppointments();
+                    alert('Cita eliminada exitosamente');
+                })
+                .catch((error) => {
+                    console.error("Error eliminando cita:", error);
+                    alert("Error al eliminar la cita");
+                });
         }
 
         // Filtros
@@ -866,39 +907,10 @@
             return timeLabels[time] || time;
         }
 
-        // Migrar datos antiguos si existen
-        function migrateOldData() {
-            const oldAppointments = JSON.parse(localStorage.getItem('appointments') || '{}');
-            const newAppointments = JSON.parse(localStorage.getItem('appointmentsData') || '[]');
-
-            if (Object.keys(oldAppointments).length > 0 && newAppointments.length === 0) {
-                const migrated = [];
-                for (const [date, times] of Object.entries(oldAppointments)) {
-                    times.forEach(time => {
-                        migrated.push({
-                            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-                            date: date,
-                            time: time,
-                            status: 'confirmed',
-                            patient: {
-                                name: 'Paciente',
-                                id: 'N/A',
-                                phone: 'N/A',
-                                email: '',
-                                reason: ''
-                            }
-                        });
-                    });
-                }
-                localStorage.setItem('appointmentsData', JSON.stringify(migrated));
-            }
-        }
-
         // Verificar si ya está logueado
         if (sessionStorage.getItem('adminLoggedIn') === 'true') {
             document.getElementById('loginScreen').style.display = 'none';
             document.getElementById('dashboard').classList.add('active');
-            migrateOldData();
             loadAppointments();
         }
     </script>
