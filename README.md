@@ -78,7 +78,7 @@ Sitio web con sistema de agendamiento de citas médicas.
 **Dirección:** Calle 21 #26-08 Esquina clínica Fatima  
 **Teléfonos:**
 - 📱 3161044386
-- ☎️ 602 7235592
+- ☎️ 602 7212171
 
 **WhatsApp:** https://wa.me/573161044386
 
