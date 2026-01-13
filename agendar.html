@@ -781,21 +781,30 @@
             getAppointments(dateString).then(appointments => {
                 timeSlotsContainer.innerHTML = '';
 
+                let availableCount = 0;
+                
                 timeSlots.forEach(slot => {
                     const slotDiv = document.createElement('div');
                     slotDiv.className = 'time-slot';
-                    slotDiv.textContent = slot.label;
-
+                    
                     // Verificar si el horario ya está ocupado
                     if (appointments.includes(slot.time)) {
                         slotDiv.classList.add('occupied');
-                        slotDiv.title = 'Horario no disponible';
+                        slotDiv.textContent = slot.label + ' ✗';
+                        slotDiv.title = 'Horario ocupado - Ya existe una cita agendada';
                     } else {
+                        slotDiv.textContent = slot.label;
                         slotDiv.onclick = () => selectTime(slot, slotDiv);
+                        availableCount++;
                     }
 
                     timeSlotsContainer.appendChild(slotDiv);
                 });
+
+                // Mensaje si no hay horarios disponibles
+                if (availableCount === 0) {
+                    timeSlotsContainer.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;"><h3>😔 No hay horarios disponibles</h3><p>Todos los horarios están ocupados para esta fecha. Por favor selecciona otro día.</p></div>';
+                }
 
                 // Actualizar fecha seleccionada
                 const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -925,13 +934,17 @@
             return new Promise((resolve) => {
                 db.collection('appointments')
                     .where('date', '==', date)
-                    .where('status', '!=', 'cancelled')
                     .get()
                     .then((querySnapshot) => {
                         const times = [];
                         querySnapshot.forEach((doc) => {
-                            times.push(doc.data().time);
+                            const appointment = doc.data();
+                            // Solo agregar horarios que NO estén cancelados
+                            if (appointment.status !== 'cancelled') {
+                                times.push(appointment.time);
+                            }
                         });
+                        console.log('Horarios ocupados para ' + date + ':', times); // Para debug
                         resolve(times);
                     })
                     .catch((error) => {
