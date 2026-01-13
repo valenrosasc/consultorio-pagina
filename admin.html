@@ -515,7 +515,7 @@
             <form onsubmit="saveAppointment(event)">
                 <div class="form-group">
                     <label>Fecha de la cita *</label>
-                    <input type="date" id="appointmentDate" required>
+                    <input type="date" id="appointmentDate" required onchange="checkAvailableSlots()">
                 </div>
 
                 <div class="form-group">
@@ -529,6 +529,9 @@
                         <option value="17:00">5:00 PM - 5:30 PM</option>
                         <option value="17:30">5:30 PM - 6:00 PM</option>
                     </select>
+                    <div id="occupiedSlotsWarning" style="display: none; margin-top: 10px; padding: 10px; background: #fff3cd; border-left: 4px solid #f39c12; border-radius: 5px; font-size: 14px;">
+                        ⚠️ <strong>Horarios ocupados:</strong> <span id="occupiedSlotsList"></span>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -813,9 +816,12 @@
             event.preventDefault();
 
             const appointmentId = document.getElementById('editingId').value;
+            const selectedDate = document.getElementById('appointmentDate').value;
+            const selectedTime = document.getElementById('appointmentTime').value;
+            
             const appointment = {
-                date: document.getElementById('appointmentDate').value,
-                time: document.getElementById('appointmentTime').value,
+                date: selectedDate,
+                time: selectedTime,
                 status: document.getElementById('appointmentStatus').value,
                 patient: {
                     name: document.getElementById('patientName').value,
@@ -827,31 +833,144 @@
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             };
 
-            if (editingAppointment) {
-                // Editar existente
-                db.collection('appointments').doc(appointmentId).update(appointment)
-                    .then(() => {
-                        closeModal();
-                        loadAppointments();
-                        alert('Cita actualizada exitosamente');
+            // Si es una nueva cita (no edición), verificar conflictos
+            if (!editingAppointment) {
+                // Verificar si ya existe una cita en esa fecha/hora (que no esté cancelada)
+                db.collection('appointments')
+                    .where('date', '==', selectedDate)
+                    .where('time', '==', selectedTime)
+                    .get()
+                    .then((querySnapshot) => {
+                        const existingAppointment = [];
+                        querySnapshot.forEach((doc) => {
+                            const data = doc.data();
+                            if (data.status !== 'cancelled') {
+                                existingAppointment.push(data);
+                            }
+                        });
+
+                        if (existingAppointment.length > 0) {
+                            alert('⚠️ Ya existe una cita para esta fecha y horario.\n\nPor favor selecciona otro horario disponible.');
+                            return;
+                        }
+
+                        // Si no hay conflicto, guardar la cita
+                        saveAppointmentToFirebase(appointment);
                     })
                     .catch((error) => {
-                        console.error("Error actualizando cita:", error);
-                        alert("Error al actualizar la cita");
+                        console.error("Error verificando disponibilidad:", error);
+                        alert("Error al verificar disponibilidad. Intenta nuevamente.");
                     });
             } else {
-                // Agregar nueva
-                db.collection('appointments').add(appointment)
-                    .then(() => {
-                        closeModal();
-                        loadAppointments();
-                        alert('Cita agregada exitosamente');
+                // Es una edición, verificar que no haya otra cita (excluyendo la actual)
+                db.collection('appointments')
+                    .where('date', '==', selectedDate)
+                    .where('time', '==', selectedTime)
+                    .get()
+                    .then((querySnapshot) => {
+                        const conflictingAppointments = [];
+                        querySnapshot.forEach((doc) => {
+                            const data = doc.data();
+                            // Excluir la cita actual que se está editando y las canceladas
+                            if (doc.id !== appointmentId && data.status !== 'cancelled') {
+                                conflictingAppointments.push(data);
+                            }
+                        });
+
+                        if (conflictingAppointments.length > 0) {
+                            alert('⚠️ Ya existe otra cita para esta fecha y horario.\n\nPor favor selecciona otro horario disponible.');
+                            return;
+                        }
+
+                        // Si no hay conflicto, actualizar la cita
+                        db.collection('appointments').doc(appointmentId).update(appointment)
+                            .then(() => {
+                                closeModal();
+                                loadAppointments();
+                                alert('Cita actualizada exitosamente');
+                            })
+                            .catch((error) => {
+                                console.error("Error actualizando cita:", error);
+                                alert("Error al actualizar la cita");
+                            });
                     })
                     .catch((error) => {
-                        console.error("Error agregando cita:", error);
-                        alert("Error al agregar la cita");
+                        console.error("Error verificando disponibilidad:", error);
+                        alert("Error al verificar disponibilidad. Intenta nuevamente.");
                     });
             }
+        }
+
+        // Función auxiliar para guardar en Firebase
+        function saveAppointmentToFirebase(appointment) {
+            db.collection('appointments').add(appointment)
+                .then(() => {
+                    closeModal();
+                    loadAppointments();
+                    alert('Cita agregada exitosamente');
+                })
+                .catch((error) => {
+                    console.error("Error agregando cita:", error);
+                    alert("Error al agregar la cita");
+                });
+        }
+
+        // Verificar horarios ocupados cuando se selecciona una fecha
+        function checkAvailableSlots() {
+            const selectedDate = document.getElementById('appointmentDate').value;
+            if (!selectedDate) return;
+
+            const timeSelect = document.getElementById('appointmentTime');
+            const warningDiv = document.getElementById('occupiedSlotsWarning');
+            const occupiedList = document.getElementById('occupiedSlotsList');
+
+            db.collection('appointments')
+                .where('date', '==', selectedDate)
+                .get()
+                .then((querySnapshot) => {
+                    const occupiedTimes = [];
+                    const timeLabels = {
+                        '15:00': '3:00 PM',
+                        '15:30': '3:30 PM',
+                        '16:00': '4:00 PM',
+                        '16:30': '4:30 PM',
+                        '17:00': '5:00 PM',
+                        '17:30': '5:30 PM'
+                    };
+
+                    querySnapshot.forEach((doc) => {
+                        const data = doc.data();
+                        if (data.status !== 'cancelled') {
+                            occupiedTimes.push(data.time);
+                        }
+                    });
+
+                    // Actualizar las opciones del select
+                    const options = timeSelect.querySelectorAll('option');
+                    options.forEach(option => {
+                        if (option.value && occupiedTimes.includes(option.value)) {
+                            option.textContent = option.textContent.split(' ')[0] + ' ' + option.textContent.split(' ').slice(1).join(' ').replace(' ⚠️ OCUPADO', '') + ' ⚠️ OCUPADO';
+                            option.style.color = '#e74c3c';
+                            option.style.fontWeight = 'bold';
+                        } else if (option.value) {
+                            option.textContent = option.textContent.replace(' ⚠️ OCUPADO', '');
+                            option.style.color = '';
+                            option.style.fontWeight = '';
+                        }
+                    });
+
+                    // Mostrar advertencia si hay horarios ocupados
+                    if (occupiedTimes.length > 0) {
+                        const occupiedLabels = occupiedTimes.map(time => timeLabels[time] || time).join(', ');
+                        occupiedList.textContent = occupiedLabels;
+                        warningDiv.style.display = 'block';
+                    } else {
+                        warningDiv.style.display = 'none';
+                    }
+                })
+                .catch((error) => {
+                    console.error("Error verificando horarios:", error);
+                });
         }
 
         function deleteAppointment(id) {
