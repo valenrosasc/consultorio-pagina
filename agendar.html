@@ -164,8 +164,11 @@
             text-align: center;
             font-weight: 600;
             color: #3d8268;
-            padding: 10px;
+            padding: 10px 5px;
             font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .calendar-day {
@@ -179,6 +182,7 @@
             transition: all 0.3s ease;
             font-weight: 500;
             background: white;
+            min-height: 45px;
         }
 
         .calendar-day:hover:not(.disabled):not(.other-month) {
@@ -404,11 +408,22 @@
 
         @media (max-width: 768px) {
             .content {
-                padding: 25px;
+                padding: 25px 15px;
             }
 
             .calendar-grid {
-                gap: 5px;
+                gap: 6px;
+            }
+
+            .calendar-day-label {
+                font-size: 12px;
+                padding: 8px 2px;
+            }
+
+            .calendar-day {
+                font-size: 14px;
+                min-height: 40px;
+                border-width: 1px;
             }
 
             .time-slots {
